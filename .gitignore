@@ -1,0 +1,19 @@
+node_modules
+.next
+.open-next
+.wrangler
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+*.tsbuildinfo
+.admin-credentials
+.env*
+!.env.example
+.DS_Store
+# ห้าม commit รายชื่อจริง / ไฟล์ CSV ที่มีข้อมูลบุคคล
+*.csv
+!templates/*.csv
+!public/templates/*.csv
+
+# ภาพตัวอย่างที่ผู้ใช้ส่งมา (มีข้อมูลบุคคล) ไม่ใช่ส่วนของแอป
+IMG_*

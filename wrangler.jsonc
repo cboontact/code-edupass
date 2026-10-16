@@ -1,0 +1,44 @@
+{
+  // Top-level = DEVELOPMENT (local / preview). Production lives under env.production.
+  // Non-inheritable keys (bindings, vars, services) must be repeated per environment.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "edupass-dev",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-09-27",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "edupass-dev" }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "edupass-dev",
+      "database_id": "00000000-0000-0000-0000-000000000000", // dev: ใช้ local เท่านั้น
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [{ "binding": "EVIDENCE", "bucket_name": "edupass-evidence-dev" }],
+  "vars": {
+    "ENVIRONMENT": "development"
+  },
+
+  "env": {
+    "production": {
+      "name": "edupass",
+      "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "edupass" }],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "edupass",
+          "database_id": "5f69edc8-5934-4ffc-b900-eb7e9d0e9236",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [{ "binding": "EVIDENCE", "bucket_name": "edupass-evidence" }],
+      "vars": {
+        "ENVIRONMENT": "production",
+        "ADMIN_USERNAME": "cboonta"
+      }
+      // ADMIN_PASSWORD_HASH, ADMIN_SESSION_SECRET และค่า GOOGLE_* ตั้งเป็น secrets ก่อนเผยแพร่
+    }
+  }
+}

@@ -1,0 +1,10 @@
+# สร้างรหัสผ่านเฉพาะเครื่องด้วย npm run setup:admin
+# รหัสผ่านและกุญแจ session เป็นความลับ ห้ามเผยแพร่
+ADMIN_USERNAME=
+ADMIN_PASSWORD_HASH=
+ADMIN_SESSION_SECRET=
+
+# หลักฐานนักเรียน: ใช้ Service Account ที่เป็นสมาชิกของ Google Shared Drive
+GOOGLE_SERVICE_ACCOUNT_EMAIL=
+GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n"
+GOOGLE_DRIVE_FOLDER_ID=
