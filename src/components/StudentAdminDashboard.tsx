@@ -1,5 +1,6 @@
 "use client";
 
+import { useToast } from "./toast";
 import { readJson } from "@/lib/http";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Card, Icon, Notice, Skeleton, inputClass } from "./ui";
@@ -71,6 +72,8 @@ function numericSort(a: string, b: string) {
 }
 
 export function StudentAdminDashboard() {
+  const toast = useToast();
+  const [deleting, setDeleting] = useState<Row | null>(null);
   const [data, setData] = useState<Payload | null>(null);
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
@@ -103,7 +106,10 @@ export function StudentAdminDashboard() {
     try {
       const response = await fetch(`/api/admin/students?${params}`);
       if (!response.ok) throw new Error();
-      setData(await readJson(response));
+      const payload = await readJson(response) as Payload;
+      setData(payload);
+      const last = Math.max(1, Math.ceil(payload.total / payload.pageSize));
+      if (page > last) setPage(last);
       setError(null);
     } catch {
       setError("โหลดข้อมูลนักเรียนไม่สำเร็จ");
@@ -264,9 +270,12 @@ export function StudentAdminDashboard() {
                     {row.updatedAt ? "ส่งแล้ว" : "ยังไม่ส่ง"}
                   </span>
                   {row.updatedAt && (
+                    <div className="flex items-center gap-1">
                     <button type="button" className="inline-flex size-11 items-center justify-center rounded-lg text-blue-700 hover:bg-blue-50" onClick={() => setViewing(row)} aria-label={`ดูหลักฐานของ ${row.name}`}>
                       <Icon name="eye" />
                     </button>
+                    <button type="button" onClick={() => setDeleting(row)} aria-label={`ลบหลักฐานของ ${row.name} เพื่อให้ส่งใหม่`} title="ลบหลักฐานเพื่อให้ส่งใหม่" className="inline-flex size-11 items-center justify-center rounded-lg text-red-700 hover:bg-red-50"><Icon name="trash-can" /></button>
+                    </div>
                   )}
                 </li>
               ))}
@@ -284,7 +293,13 @@ export function StudentAdminDashboard() {
         </Card>
       </div>
 
-      {viewing && <EvidenceDialog row={viewing} onClose={() => setViewing(null)} />}
+      {viewing && <EvidenceDialog row={viewing} onClose={() => setViewing(null)} onDelete={() => { setViewing(null); setDeleting(viewing); }} />}
+      {deleting && <DeleteEvidenceDialog row={deleting} onClose={() => setDeleting(null)} onDeleted={async (cleanupPending) => {
+        setDeleting(null);
+        toast("success", "ลบหลักฐานแล้ว นักเรียนส่งภาพใหม่ได้ในช่วงเปิดรับ");
+        if (cleanupPending) toast("error", "รีเซ็ตสถานะแล้ว แต่ย้ายภาพเดิมไปถังขยะ Google Drive ไม่สำเร็จ");
+        await load();
+      }} />}
     </div>
   );
 }
@@ -363,7 +378,7 @@ function Stat({ label, value, icon, tone }: { label: string; value: number | str
   );
 }
 
-function EvidenceDialog({ row, onClose }: { row: Row; onClose: () => void }) {
+function EvidenceDialog({ row, onClose, onDelete }: { row: Row; onClose: () => void; onDelete: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
   useEffect(() => { ref.current?.showModal(); }, []);
@@ -386,6 +401,45 @@ function EvidenceDialog({ row, onClose }: { row: Row; onClose: () => void }) {
           onError={() => setState("error")}
         />
         <p className="mt-3 text-sm text-slate-600">ส่งเมื่อ {fmt(row.updatedAt)}</p>
+        <Button variant="danger" icon="trash-can" className="mt-3" onClick={onDelete}>ลบหลักฐานเพื่อให้ส่งใหม่</Button>
+      </div>
+    </dialog>
+  );
+}
+
+function DeleteEvidenceDialog({ row, onClose, onDeleted }: {
+  row: Row; onClose: () => void; onDeleted: (cleanupPending: boolean) => Promise<void>;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const inFlight = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { ref.current?.showModal(); }, []);
+  async function remove() {
+    if (inFlight.current) return;
+    inFlight.current = true; setBusy(true); setError(null);
+    try {
+      const response = await fetch(`/api/admin/student-evidence/${row.id}`, {
+        method: "DELETE", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updatedAt: row.updatedAt }),
+      });
+      const result = await readJson(response);
+      if (!response.ok) { setError(result?.error?.message ?? "ลบหลักฐานไม่สำเร็จ"); return; }
+      await onDeleted(!!result.cleanupPending);
+    } catch { setError("เชื่อมต่อไม่สำเร็จ กรุณารีเฟรชสถานะก่อนลองใหม่"); }
+    finally { inFlight.current = false; setBusy(false); }
+  }
+  return (
+    <dialog ref={ref} onClose={onClose} onCancel={(event) => { if (busy) event.preventDefault(); }}
+      aria-labelledby="delete-evidence-title" className="m-auto w-[min(92vw,30rem)] rounded-2xl p-5 shadow-2xl backdrop:bg-slate-900/50">
+      <h2 id="delete-evidence-title" className="text-lg font-bold">ลบหลักฐานเพื่อให้ส่งใหม่</h2>
+      <p className="mt-3 font-semibold">{row.name}</p>
+      <p className="text-sm text-slate-600">เลขประจำตัว {row.studentNumber} · ชั้น {row.className || "—"}</p>
+      <p className="my-4 text-sm text-slate-700">ภาพเดิมจะถูกย้ายไปถังขยะ Google Drive สถานะจะกลับเป็น “ยังไม่ส่ง” โดยเก็บรายชื่อนักเรียนไว้ นักเรียนส่งภาพใหม่ได้ในช่วงเปิดรับหลักฐาน</p>
+      {error && <Notice tone="error" icon="triangle-exclamation" title={error} />}
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <Button variant="secondary" disabled={busy} onClick={onClose} autoFocus>ยกเลิก</Button>
+        <Button variant="danger" icon="trash-can" loading={busy} loadingText="กำลังลบ…" onClick={remove}>ยืนยันลบหลักฐาน</Button>
       </div>
     </dialog>
   );

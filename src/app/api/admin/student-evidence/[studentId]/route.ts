@@ -1,6 +1,31 @@
-import { audit, jsonError, requireAdmin } from "@/lib/api";
+import { audit, jsonError, jsonOk, requireAdmin } from "@/lib/api";
 import { getEnv } from "@/lib/env";
-import { getDriveFile } from "@/lib/google-drive";
+import { deleteDriveFile, getDriveFile } from "@/lib/google-drive";
+
+export async function DELETE(req: Request, ctx: { params: Promise<{ studentId: string }> }) {
+  const auth = await requireAdmin(req); if (auth instanceof Response) return auth;
+  const studentId = Number((await ctx.params).studentId);
+  if (!Number.isSafeInteger(studentId) || studentId <= 0) return jsonError(400, "รหัสไม่ถูกต้อง");
+  const body = await req.json().catch(() => null) as { updatedAt?: unknown } | null;
+  if (typeof body?.updatedAt !== "string" || !body.updatedAt)
+    return jsonError(400, "กรุณารีเฟรชข้อมูลก่อนลบหลักฐาน");
+  const env = getEnv();
+  // Remove only the version the administrator reviewed. A concurrent new upload must survive.
+  const removed = await env.DB.prepare(
+    "DELETE FROM student_submissions WHERE student_id = ? AND updated_at = ? RETURNING drive_file_id",
+  ).bind(studentId, body.updatedAt).first<{ drive_file_id: string }>();
+  if (!removed) return jsonError(409, "หลักฐานมีการเปลี่ยนแปลงหรือถูกลบแล้ว กรุณารีเฟรชข้อมูล");
+  let cleanupPending = false;
+  try { await deleteDriveFile(env, removed.drive_file_id); }
+  catch (error) {
+    cleanupPending = true;
+    console.error("Deleted student evidence Drive cleanup failed", { studentId, fileId: removed.drive_file_id, error });
+  }
+  await audit(env.DB, auth.actor, "student_evidence.delete",
+    JSON.stringify({ studentId, driveFileId: removed.drive_file_id, cleanupPending }))
+    .catch((error) => console.error("Student evidence deletion audit failed", error));
+  return jsonOk({ ok: true, cleanupPending });
+}
 
 export async function GET(req: Request, ctx: { params: Promise<{ studentId: string }> }) {
   const auth = await requireAdmin(req); if (auth instanceof Response) return auth;
